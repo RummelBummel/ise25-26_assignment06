@@ -6,14 +6,14 @@ import org.jspecify.annotations.Nullable;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Objects;
 
 @Builder(toBuilder = true)
 public record User(
         @Nullable Long id,
-        @Nullable LocalDateTime createdAt,
-        @Nullable LocalDateTime updatedAt,
+        @Nullable Instant createdAt,
+        @Nullable Instant updatedAt,
 
         @NonNull String loginName,
         @NonNull String emailAddress,

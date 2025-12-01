@@ -8,7 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -18,10 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Simple in-memory implementation of the user data service.
- * This adapter satisfies the UserDataService port without using a real database.
- *
- * It is sufficient for tests and follows the hexagonal architecture:
- * the domain talks only to the port, not to the storage details.
+ * Mimics database behavior for tests.
  */
 @Service
 @Slf4j
@@ -67,7 +64,7 @@ class UserDataServiceImpl implements UserDataService {
     public @NonNull User upsert(@NonNull User user) {
         Objects.requireNonNull(user, "user must not be null");
 
-        // Einzigartigkeits-Constraints prüfen (loginName & emailAddress)
+        // Einzigartigkeits-Constraints prüfen
         users.values().forEach(existing -> {
             boolean sameId = user.id() != null && user.id().equals(existing.id());
             if (!sameId) {
@@ -80,7 +77,7 @@ class UserDataServiceImpl implements UserDataService {
             }
         });
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
 
         if (user.id() == null) {
             // Neuer User
@@ -90,7 +87,9 @@ class UserDataServiceImpl implements UserDataService {
                     .createdAt(now)
                     .updatedAt(now)
                     .build();
+
             users.put(newId, created);
+
             log.debug("Created new user with id={} and loginName={}", newId, created.loginName());
             return created;
         } else {
@@ -110,6 +109,7 @@ class UserDataServiceImpl implements UserDataService {
                     .build();
 
             users.put(updated.id(), updated);
+
             log.debug("Updated user with id={} and loginName={}", updated.id(), updated.loginName());
             return updated;
         }
@@ -122,6 +122,7 @@ class UserDataServiceImpl implements UserDataService {
         if (!users.containsKey(id)) {
             throw new NotFoundException(User.class, id);
         }
+
         users.remove(id);
         log.debug("Deleted user with id={}", id);
     }

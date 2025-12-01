@@ -2,48 +2,45 @@ package de.seuhd.campuscoffee.api.mapper;
 
 import de.seuhd.campuscoffee.api.dtos.UserDto;
 import de.seuhd.campuscoffee.domain.model.User;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
-/**
- * Mapper between User domain model and UserDto.
- */
-@Component
-public class UserDtoMapper {
+import org.jspecify.annotations.Nullable;
 
-    public @NonNull UserDto toDto(@NonNull User user) {
-        return UserDto.builder()
-                .id(user.id())
-                .createdAt(user.createdAt())
-                .updatedAt(user.updatedAt())
-                .loginName(user.loginName())
-                .emailAddress(user.emailAddress())
-                .firstName(user.firstName())
-                .lastName(user.lastName())
-                .build();
+@Mapper(componentModel = "spring")
+@ConditionalOnMissingBean
+public interface UserDtoMapper {
+
+    // --- Hauptmapping ---
+    UserDto fromDomain(User source);
+    User toDomain(UserDto source);
+
+    // --- Kompatibilität zum UserController ---
+    default UserDto toDto(User source) {
+        return fromDomain(source);
     }
 
-    public @NonNull User toDomain(@NonNull UserDto dto) {
-        return User.builder()
-                .id(dto.id())
-                .createdAt(dto.createdAt())
-                .updatedAt(dto.updatedAt())
-                .loginName(dto.loginName())
-                .emailAddress(dto.emailAddress())
-                .firstName(dto.firstName())
-                .lastName(dto.lastName())
-                .build();
-    }
-
-    public @NonNull List<UserDto> toDtoList(@Nullable List<User> users) {
-        if (users == null || users.isEmpty()) {
-            return List.of();
-        }
+    default List<UserDto> toDtoList(List<User> users) {
+        if (users == null) return List.of();
         return users.stream()
-                .map(this::toDto)
+                .map(this::fromDomain)
                 .toList();
+    }
+
+    // --- Custom timestamps ---
+
+    default @Nullable LocalDateTime map(@Nullable Instant value) {
+        if (value == null) return null;
+        return LocalDateTime.ofInstant(value, ZoneId.of("UTC"));
+    }
+
+    default @Nullable Instant map(@Nullable LocalDateTime value) {
+        if (value == null) return null;
+        return value.atZone(ZoneId.of("UTC")).toInstant();
     }
 }

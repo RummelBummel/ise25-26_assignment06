@@ -4,10 +4,10 @@ import de.seuhd.campuscoffee.api.dtos.PosDto;
 import de.seuhd.campuscoffee.domain.model.Pos;
 import de.seuhd.campuscoffee.domain.tests.TestFixtures;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+
 import java.util.List;
 import java.util.Objects;
-
-import org.springframework.http.HttpStatus;
 
 import static de.seuhd.campuscoffee.tests.SystemTestUtils.Requests.posRequests;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,7 +20,9 @@ public class PosSystemTests extends AbstractSysTest {
     @Test
     void createPos() {
         Pos posToCreate = TestFixtures.getPosFixturesForInsertion().getFirst();
-        Pos createdPos = posDtoMapper.toDomain(posRequests.create(List.of(posDtoMapper.fromDomain(posToCreate))).getFirst());
+        Pos createdPos = posDtoMapper.toDomain(
+                posRequests.create(List.of(posDtoMapper.fromDomain(posToCreate))).getFirst()
+        );
 
         assertEqualsIgnoringIdAndTimestamps(createdPos, posToCreate);
     }
@@ -54,7 +56,10 @@ public class PosSystemTests extends AbstractSysTest {
         List<Pos> createdPosList = TestFixtures.createPosFixtures(posService);
         Pos createdPos = createdPosList.getFirst();
         String posName = createdPos.name();
-        Pos filteredPos = posDtoMapper.toDomain(posRequests.retrieveByFilter("name", posName));
+
+        Pos filteredPos = posDtoMapper.toDomain(
+                posRequests.retrieveByFilter("name", posName)
+        );
 
         assertEqualsIgnoringTimestamps(filteredPos, createdPos);
     }
@@ -64,18 +69,20 @@ public class PosSystemTests extends AbstractSysTest {
         List<Pos> createdPosList = TestFixtures.createPosFixtures(posService);
         Pos posToUpdate = createdPosList.getFirst();
 
-        // update fields using toBuilder() pattern (records are immutable)
         posToUpdate = posToUpdate.toBuilder()
                 .name(posToUpdate.name() + " (Updated)")
                 .description("Updated description")
                 .build();
 
-        Pos updatedPos = posDtoMapper.toDomain(posRequests.update(List.of(posDtoMapper.fromDomain(posToUpdate))).getFirst());
+        Pos updatedPos = posDtoMapper.toDomain(
+                posRequests.update(List.of(posDtoMapper.fromDomain(posToUpdate))).getFirst()
+        );
 
         assertEqualsIgnoringTimestamps(updatedPos, posToUpdate);
 
-        // verify changes persist
-        Pos retrievedPos = posDtoMapper.toDomain(posRequests.retrieveById(posToUpdate.id()));
+        Pos retrievedPos = posDtoMapper.toDomain(
+                posRequests.retrieveById(posToUpdate.id())
+        );
 
         assertEqualsIgnoringTimestamps(retrievedPos, posToUpdate);
     }
@@ -86,9 +93,9 @@ public class PosSystemTests extends AbstractSysTest {
         Pos posToDelete = createdPosList.getFirst();
         Objects.requireNonNull(posToDelete.id());
 
-        List<Integer> statusCodes = posRequests.deleteAndReturnStatusCodes(List.of(posToDelete.id(), posToDelete.id()));
+        List<Integer> statusCodes = posRequests
+                .deleteAndReturnStatusCodes(List.of(posToDelete.id(), posToDelete.id()));
 
-        // first deletion should return 204 No Content, second should return 404 Not Found
         assertThat(statusCodes)
                 .containsExactly(HttpStatus.NO_CONTENT.value(), HttpStatus.NOT_FOUND.value());
 
@@ -96,6 +103,7 @@ public class PosSystemTests extends AbstractSysTest {
                 .stream()
                 .map(PosDto::id)
                 .toList();
+
         assertThat(remainingPosIds)
                 .doesNotContain(posToDelete.id());
     }

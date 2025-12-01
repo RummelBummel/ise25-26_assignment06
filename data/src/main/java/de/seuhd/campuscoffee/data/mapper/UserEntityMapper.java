@@ -6,6 +6,9 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * MapStruct mapper for converting between domain models and JPA entities.
@@ -21,16 +24,25 @@ public interface UserEntityMapper {
     User fromEntity(UserEntity source);
     UserEntity toEntity(User source);
 
-    /**
-     * Updates an existing JPA entity with data from the domain model.
-     * This method is intended for update operations where the entity already exists.
-     * JPA-managed fields (id, createdAt, updatedAt) are preserved and not overwritten.
-     *
-     * @param source the domain model containing the new data; must not be null
-     * @param target the existing JPA entity to update; must not be null
-     */
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateEntity(User source, @MappingTarget UserEntity target);
+
+    // --- Custom mappings for timestamps ---
+
+    default Instant map(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        return value.atZone(ZoneId.of("UTC")).toInstant();
+    }
+
+    default LocalDateTime map(Instant value) {
+        if (value == null) {
+            return null;
+        }
+        return LocalDateTime.ofInstant(value, ZoneId.of("UTC"));
+    }
 }
+
