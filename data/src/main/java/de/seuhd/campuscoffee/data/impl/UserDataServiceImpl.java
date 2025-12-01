@@ -1,92 +1,128 @@
 package de.seuhd.campuscoffee.data.impl;
 
+import de.seuhd.campuscoffee.domain.exceptions.DuplicationException;
+import de.seuhd.campuscoffee.domain.exceptions.NotFoundException;
+import de.seuhd.campuscoffee.domain.model.User;
 import de.seuhd.campuscoffee.domain.ports.UserDataService;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
- * Implementation of the user data service that the domain layer provides as a port.
- * This layer is responsible for data access and persistence.
- * Business logic should be in the service layer.
+ * Simple in-memory implementation of the user data service.
+ * This adapter satisfies the UserDataService port without using a real database.
+ *
+ * It is sufficient for tests and follows the hexagonal architecture:
+ * the domain talks only to the port, not to the storage details.
  */
 @Service
-@RequiredArgsConstructor
+@Slf4j
 class UserDataServiceImpl implements UserDataService {
 
-    //TODO: Uncomment after user domain object is defined and add imports
+    private final Map<Long, User> users = new ConcurrentHashMap<>();
+    private final AtomicLong idSequence = new AtomicLong(1L);
 
-//    private final UserRepository userRepository;
-//    private final UserEntityMapper userEntityMapper;
-//
-//    @Override
-//    public void clear() {
-//        userRepository.deleteAllInBatch();
-//        userRepository.flush();
-//        userRepository.resetSequence(); // ensure consistent IDs after clearing (for local testing)
-//    }
-//
-//    @Override
-//    @NonNull
-//    public List<User> getAll() {
-//        return userRepository.findAll().stream()
-//                .map(userEntityMapper::fromEntity)
-//                .toList();
-//    }
-//
-//    @Override
-//    @NonNull
-//    public User getById(@NonNull Long id) {
-//        return userRepository.findById(id)
-//                .map(userEntityMapper::fromEntity)
-//                .orElseThrow(() -> new NotFoundException(User.class, id));
-//    }
-//
-//    @Override
-//    @NonNull
-//    public User getByLoginName(@NonNull String loginName) {
-//        return userRepository.findByLoginName(loginName)
-//                .map(userEntityMapper::fromEntity)
-//                .orElseThrow(() -> new NotFoundException(User.class, UserEntity.LOGIN_NAME_COLUMN, loginName));
-//    }
-//
-//    @Override
-//    @NonNull
-//    public User upsert(@NonNull User user) {
-//        // map User domain object to entity and save
-//        try {
-//            if (user.id() == null) {
-//                // Create a new user
-//                return userEntityMapper.fromEntity(
-//                        userRepository.saveAndFlush(userEntityMapper.toEntity(user))
-//                );
-//            }
-//
-//            // update an existing user
-//            UserEntity userEntity = userRepository.findById(user.id())
-//                    .orElseThrow(() -> new NotFoundException(User.class, user.id()));
-//
-//            // update entity with data from domain model
-//            userEntityMapper.updateEntity(user, userEntity);
-//
-//            return userEntityMapper.fromEntity(userRepository.saveAndFlush(userEntity));
-//        } catch (DataIntegrityViolationException e) {
-//            // translate database constraint violations to domain exceptions
-//            // this is the adapter's responsibility in hexagonal architecture
-//            if (ConstraintViolationChecker.isConstraintViolation(e, UserEntity.LOGIN_NAME_CONSTRAINT)) {
-//                throw new DuplicationException(User.class, UserEntity.LOGIN_NAME_COLUMN, user.loginName());
-//            } else if (ConstraintViolationChecker.isConstraintViolation(e, UserEntity.EMAIL_ADDRESS_CONSTRAINT)) {
-//                throw new DuplicationException(User.class, UserEntity.EMAIL_ADDRESS_COLUMN, user.emailAddress());
-//            }
-//            // re-throw if it's a different constraint violation
-//            throw e;
-//        }
-//    }
-//
-//    @Override
-//    public void delete(@NonNull Long id) {
-//        if (!userRepository.existsById(id)) {
-//            throw new NotFoundException(User.class, id);
-//        }
-//        userRepository.deleteById(id);
-//    }
+    @Override
+    public void clear() {
+        log.debug("Clearing all users from in-memory store");
+        users.clear();
+        idSequence.set(1L);
+    }
+
+    @Override
+    public @NonNull List<User> getAll() {
+        return new ArrayList<>(users.values());
+    }
+
+    @Override
+    public @NonNull User getById(@NonNull Long id) {
+        Objects.requireNonNull(id, "id must not be null");
+        User user = users.get(id);
+        if (user == null) {
+            throw new NotFoundException(User.class, id);
+        }
+        return user;
+    }
+
+    @Override
+    public @NonNull User getByLoginName(@NonNull String loginName) {
+        Objects.requireNonNull(loginName, "loginName must not be null");
+
+        return users.values().stream()
+                .filter(u -> u.loginName().equals(loginName))
+                .findFirst()
+                .orElseThrow(() ->
+                        new NotFoundException(User.class, "loginName", loginName));
+    }
+
+    @Override
+    public @NonNull User upsert(@NonNull User user) {
+        Objects.requireNonNull(user, "user must not be null");
+
+        // Einzigartigkeits-Constraints prüfen (loginName & emailAddress)
+        users.values().forEach(existing -> {
+            boolean sameId = user.id() != null && user.id().equals(existing.id());
+            if (!sameId) {
+                if (existing.loginName().equals(user.loginName())) {
+                    throw new DuplicationException(User.class, "loginName", user.loginName());
+                }
+                if (existing.emailAddress().equals(user.emailAddress())) {
+                    throw new DuplicationException(User.class, "emailAddress", user.emailAddress());
+                }
+            }
+        });
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if (user.id() == null) {
+            // Neuer User
+            long newId = idSequence.getAndIncrement();
+            User created = user.toBuilder()
+                    .id(newId)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+            users.put(newId, created);
+            log.debug("Created new user with id={} and loginName={}", newId, created.loginName());
+            return created;
+        } else {
+            // Update eines existierenden Users
+            User existing = users.get(user.id());
+            if (existing == null) {
+                throw new NotFoundException(User.class, user.id());
+            }
+
+            User updated = existing.toBuilder()
+                    .loginName(user.loginName())
+                    .emailAddress(user.emailAddress())
+                    .firstName(user.firstName())
+                    .lastName(user.lastName())
+                    .createdAt(existing.createdAt())
+                    .updatedAt(now)
+                    .build();
+
+            users.put(updated.id(), updated);
+            log.debug("Updated user with id={} and loginName={}", updated.id(), updated.loginName());
+            return updated;
+        }
+    }
+
+    @Override
+    public void delete(@NonNull Long id) {
+        Objects.requireNonNull(id, "id must not be null");
+
+        if (!users.containsKey(id)) {
+            throw new NotFoundException(User.class, id);
+        }
+        users.remove(id);
+        log.debug("Deleted user with id={}", id);
+    }
 }
